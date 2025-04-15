@@ -9,6 +9,10 @@ import (
 	"github.com/surasithaof/eventbus"
 )
 
+type contextKey string
+
+var ctxTestKey = contextKey("key")
+
 func TestEventBus(t *testing.T) {
 	eventbus := eventbus.NewEventBus(eventbus.WithMaxWorkers[string](0))
 
@@ -19,19 +23,19 @@ func TestEventBus(t *testing.T) {
 
 	count := 0
 	eventbus.Subscribe("test", func(ctx context.Context, data string) {
-		if ctx.Value("key") == nil {
+		if ctx.Value(ctxTestKey) == nil {
 			t.Errorf("expected context value to be set, got nil")
 		}
 		if data == "" {
 			t.Errorf("expected data to be set, got empty string")
 		}
 		t.Logf("Received data: %s", data)
-		t.Logf("Context value: %v", ctx.Value("key"))
+		t.Logf("Context value: %v", ctx.Value(ctxTestKey))
 		count++
 	})
 
 	t.Run("success", func(t *testing.T) {
-		ctx = context.WithValue(ctx, "key", "value 1")
+		ctx = context.WithValue(ctx, ctxTestKey, "value 1")
 		err := eventbus.Publish(ctx, "test", "test message 1")
 		require.NoError(t, err, "expected no error when publishing")
 		eventbus.Wait()
@@ -40,7 +44,7 @@ func TestEventBus(t *testing.T) {
 	})
 
 	t.Run("context cancelled", func(t *testing.T) {
-		ctx := context.WithValue(ctx, "key", "value 2")
+		ctx := context.WithValue(ctx, ctxTestKey, "value 2")
 		ctx, cancel := context.WithTimeout(ctx, waitTimeout)
 		cancel()
 		err := eventbus.Publish(ctx, "test", "test message 2")
@@ -51,7 +55,7 @@ func TestEventBus(t *testing.T) {
 
 	t.Run("eventbus stopped", func(t *testing.T) {
 		eventbus.StopAndWait()
-		ctx = context.WithValue(ctx, "key", "value 3")
+		ctx = context.WithValue(ctx, ctxTestKey, "value 3")
 		err := eventbus.Publish(ctx, "test", "test message 3")
 		require.Error(t, err, "expected error when publishing to stopped eventbus")
 
@@ -77,10 +81,11 @@ func BenchmarkEventBus(b *testing.B) {
 	eventbus := eventbus.NewEventBus[string]()
 	defer eventbus.StopAndWait()
 	ctx := context.Background()
-	ctx = context.WithValue(ctx, "key", "value 1 for benchmark")
+	ctx = context.WithValue(ctx, ctxTestKey, "value 1 for benchmark")
 
 	eventbus.Subscribe("test", func(ctx context.Context, data string) {
 		b.Logf("Received data: %s", data)
+		b.Logf("Context value: %v", ctx.Value(ctxTestKey))
 	})
 	for i := 0; i < b.N; i++ {
 		eventbus.Publish(ctx, "test", "test message")

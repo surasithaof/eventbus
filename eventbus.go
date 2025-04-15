@@ -77,17 +77,14 @@ func (s *Event[T]) Publish(ctx context.Context, event EventType, payload T) erro
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Check if the context is done
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 
-	// Check if the event is stopped
 	if s.stopped {
 		return ErrorEventStopped
 	}
 
-	// Publish the event to all subscribers
 	for _, handler := range s.handlers[event] {
 		s.wg.Add(1)
 		s.limiter <- true
@@ -96,8 +93,7 @@ func (s *Event[T]) Publish(ctx context.Context, event EventType, payload T) erro
 				<-s.limiter
 				s.wg.Done()
 			}()
-			// Call the handler with the payload
-			// and the context
+
 			handler(ctx, payload)
 		}(ctx, handler)
 	}
@@ -108,16 +104,13 @@ func (s *Event[T]) Subscribe(event EventType, handler HandlerFunc[T]) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Check if the event is stopped
 	if s.stopped {
 		return ErrorEventStopped
 	}
 
-	// Add the handler to the list of subscribers
 	if s.handlers[event] == nil {
 		s.handlers[event] = make([]HandlerFunc[T], 0)
 	}
-	// Append the handler to the list of handlers for the event type
 	handlers := s.handlers[event]
 	handlers = append(handlers, handler)
 	s.handlers[event] = handlers
@@ -137,11 +130,8 @@ func (s *Event[T]) Stop() {
 	}
 	s.stopped = true
 
-	// Stop all handlers
 	s.handlers = make(map[EventType][]HandlerFunc[T])
-	// Close the limiter channel
 	close(s.limiter)
-	// Wait for all handlers to finish
 }
 
 func (s *Event[T]) StopAndWait() {

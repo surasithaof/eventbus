@@ -14,12 +14,12 @@ bin/*
 
 # Output of the go coverage tool, specifically when used with LiteIDE
 *.out
+*.tmp
+coverage*
 
 # env file
 .env*
 !.env.example
 
-coverage*
-*.out
-
+# macOS
 .DS_Store

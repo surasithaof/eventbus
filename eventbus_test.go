@@ -35,15 +35,16 @@ func TestEventBus(t *testing.T) {
 	})
 
 	t.Run("success", func(t *testing.T) {
+		count = 0 // reset count for this test
 		ctx = context.WithValue(ctx, ctxTestKey, "value 1")
 		err := eventbus.Publish(ctx, "test", "test message 1")
 		require.NoError(t, err, "expected no error when publishing")
 		eventbus.Wait()
 		require.Equal(t, 1, count, "expected count to be 1")
-		count = 0 // reset count for next test
 	})
 
 	t.Run("context cancelled", func(t *testing.T) {
+		count = 0 // reset count for this test
 		ctx := context.WithValue(ctx, ctxTestKey, "value 2")
 		ctx, cancel := context.WithTimeout(ctx, waitTimeout)
 		cancel()
@@ -54,16 +55,19 @@ func TestEventBus(t *testing.T) {
 	})
 
 	t.Run("eventbus stopped", func(t *testing.T) {
+		count = 0 // reset count for this test
 		eventbus.StopAndWait()
 		ctx = context.WithValue(ctx, ctxTestKey, "value 3")
 		err := eventbus.Publish(ctx, "test", "test message 3")
 		require.Error(t, err, "expected error when publishing to stopped eventbus")
+		require.Equal(t, count, 0, "expected count to be 0")
 
 		err = eventbus.Subscribe("test", func(ctx context.Context, data string) {
 			t.Log("this should not be called")
 		})
 		require.Error(t, err, "expected error when subscribing to stopped eventbus")
 		eventbus.Stop() // stop again to ensure no panic
+		require.Equal(t, count, 0, "expected count to be 0")
 	})
 
 	select {

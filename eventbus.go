@@ -3,6 +3,7 @@ package eventbus
 import (
 	"context"
 	"errors"
+	"log"
 	"runtime"
 	"sync"
 )
@@ -53,7 +54,7 @@ type (
 	}
 )
 
-// NewEventBus creates a new event bus with the given options.
+// NewEventBus initializes the handlers map and the limiter channel.
 // the default maxWorkers is 4 times the number of CPU cores.
 func NewEventBus[T any](opts ...Option[T]) EventBus[T] {
 	// Set maxWorkers to a default value as 4 times the number of CPU cores.
@@ -101,6 +102,13 @@ func (s *Event[T]) Publish(ctx context.Context, event EventType, payload T) erro
 		s.limiter <- true
 		go func(ctx context.Context, handler HandlerFunc[T]) {
 			defer func() {
+				// recover from panic in the handler
+				if r := recover(); r != nil {
+					// Log or handle the panic as needed
+					log.Printf("Recovered from panic: %v", r)
+				}
+
+				// release the limiter when the handler is done
 				<-s.limiter
 				s.wg.Done()
 			}()
@@ -122,9 +130,7 @@ func (s *Event[T]) Subscribe(event EventType, handler HandlerFunc[T]) error {
 	if s.handlers[event] == nil {
 		s.handlers[event] = make([]HandlerFunc[T], 0)
 	}
-	handlers := s.handlers[event]
-	handlers = append(handlers, handler)
-	s.handlers[event] = handlers
+	s.handlers[event] = append(s.handlers[event], handler)
 	return nil
 }
 

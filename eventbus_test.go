@@ -12,10 +12,13 @@ import (
 type testKey int8
 
 const testCtxKey testKey = iota
-const TestEventType eventbus.EventType = "test.event"
+const (
+	TestEventType      eventbus.EventType = "test.event"
+	TestPanicEventType eventbus.EventType = "test.panic.event"
+)
 
 func TestEventBus(t *testing.T) {
-	eventbus := eventbus.NewEventBus(eventbus.WithMaxWorkers[string](0))
+	bus := eventbus.NewEventBus(eventbus.WithMaxWorkers[string](0))
 
 	ctx := context.Background()
 	waitTimeout := 3 * time.Second
@@ -23,7 +26,7 @@ func TestEventBus(t *testing.T) {
 	defer cancel()
 
 	count := 0
-	eventbus.Subscribe(TestEventType, func(ctx context.Context, data string) {
+	bus.Subscribe(TestEventType, func(ctx context.Context, data string) {
 		if ctx.Value(testCtxKey) == nil {
 			t.Errorf("expected context value to be set, got nil")
 		}
@@ -38,9 +41,9 @@ func TestEventBus(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		count = 0 // reset count for this test
 		ctx = context.WithValue(ctx, testCtxKey, "value 1")
-		err := eventbus.Publish(ctx, TestEventType, "test message 1")
+		err := bus.Publish(ctx, TestEventType, "test message 1")
 		require.NoError(t, err, "expected no error when publishing")
-		eventbus.Wait()
+		bus.Wait()
 		require.Equal(t, 1, count, "expected count to be 1")
 	})
 
@@ -49,25 +52,37 @@ func TestEventBus(t *testing.T) {
 		ctx := context.WithValue(ctx, testCtxKey, "value 2")
 		ctx, cancel := context.WithTimeout(ctx, waitTimeout)
 		cancel()
-		err := eventbus.Publish(ctx, TestEventType, "test message 2")
+		err := bus.Publish(ctx, TestEventType, "test message 2")
 		require.Error(t, err, "expected error when publishing to cancelled context")
-		eventbus.Wait()
+		bus.Wait()
 		require.Equal(t, count, 0, "expected count to be 1")
+	})
+
+	t.Run("recovery from panic", func(t *testing.T) {
+		err := bus.Subscribe(TestPanicEventType, func(ctx context.Context, data string) {
+			panic("test panic")
+		})
+		require.NoError(t, err, "expected no error when subscribing to panic event")
+		require.NotPanics(t, func() {
+			err = bus.Publish(ctx, TestPanicEventType, "test message")
+			require.NoError(t, err, "expected no error when publishing to panic event")
+			bus.Wait()
+		})
 	})
 
 	t.Run("eventbus stopped", func(t *testing.T) {
 		count = 0 // reset count for this test
-		eventbus.StopAndWait()
+		bus.StopAndWait()
 		ctx = context.WithValue(ctx, testCtxKey, "value 3")
-		err := eventbus.Publish(ctx, TestEventType, "test message 3")
+		err := bus.Publish(ctx, TestEventType, "test message 3")
 		require.Error(t, err, "expected error when publishing to stopped eventbus")
 		require.Equal(t, count, 0, "expected count to be 0")
 
-		err = eventbus.Subscribe(TestEventType, func(ctx context.Context, data string) {
+		err = bus.Subscribe(TestEventType, func(ctx context.Context, data string) {
 			t.Log("this should not be called")
 		})
 		require.Error(t, err, "expected error when subscribing to stopped eventbus")
-		eventbus.Stop() // stop again to ensure no panic
+		bus.Stop() // stop again to ensure no panic
 		require.Equal(t, count, 0, "expected count to be 0")
 	})
 

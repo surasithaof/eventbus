@@ -11,42 +11,50 @@ var (
 	ErrorEventStopped = errors.New("event stopped")
 )
 
-type EventType string
+type (
+	Option[T any] func(*Event[T])
 
-type Option[T any] func(*Event[T])
+	// EventType is the type of the event of topic name
+	EventType string
 
-type Event[T any] struct {
-	limiter  chan bool
-	stopped  bool
-	mu       sync.RWMutex
-	wg       sync.WaitGroup
-	handlers map[EventType][]HandlerFunc[T]
-}
+	// HandlerFunc is a handler function that will be called when an event is published
+	HandlerFunc[T any] func(ctx context.Context, payload T)
 
-type HandlerFunc[T any] func(ctx context.Context, payload T)
+	// Event is the main struct for the event bus
+	Event[T any] struct {
+		limiter  chan bool
+		stopped  bool
+		mu       sync.RWMutex
+		wg       sync.WaitGroup
+		handlers map[EventType][]HandlerFunc[T]
+	}
 
-type EventBus[T any] interface {
-	// publishes an event to all subscribers.
-	// it will call the handler with the payload.
-	Publish(ctx context.Context, event EventType, payload T) error
-	// registers a handler for an event type.
-	// the handler will be called with the payload when the event is published.
-	Subscribe(event EventType, handler HandlerFunc[T]) error
+	// EventBus is the interface for the event bus
+	EventBus[T any] interface {
+		// publishes an event to all subscribers.
+		// it will call the handler with the payload.
+		Publish(ctx context.Context, event EventType, payload T) error
+		// registers a handler for an event type.
+		// the handler will be called with the payload when the event is published.
+		Subscribe(event EventType, handler HandlerFunc[T]) error
 
-	// waits for all handlers to finish.
-	// this will block until all handlers are finished.
-	Wait()
-	// stops the event bus.
-	// this will stop all handlers and close the event bus.
-	Stop()
-	// stops the event bus and waits for all handlers to finish.
-	// this will block until all handlers are finished.
-	// this is a convenience method for stopping the event bus and waiting for all handlers to finish.
-	// it will call Stop() and Wait() in order.
-	// this is useful for cleaning up resources and stopping the event bus gracefully.
-	StopAndWait()
-}
+		// waits for all handlers to finish.
+		// this will block until all handlers are finished.
+		Wait()
+		// stops the event bus.
+		// this will stop all handlers and close the event bus.
+		Stop()
+		// stops the event bus and waits for all handlers to finish.
+		// this will block until all handlers are finished.
+		// this is a convenience method for stopping the event bus and waiting for all handlers to finish.
+		// it will call Stop() and Wait() in order.
+		// this is useful for cleaning up resources and stopping the event bus gracefully.
+		StopAndWait()
+	}
+)
 
+// NewEventBus creates a new event bus with the given options.
+// the default maxWorkers is 4 times the number of CPU cores.
 func NewEventBus[T any](opts ...Option[T]) EventBus[T] {
 	// Set maxWorkers to a default value as 4 times the number of CPU cores.
 	maxWorkers := 4 * runtime.GOMAXPROCS(0)
@@ -64,6 +72,9 @@ func NewEventBus[T any](opts ...Option[T]) EventBus[T] {
 	return e
 }
 
+// WithMaxWorkers sets the maximum number of workers for initializing the event bus.
+// this will limit the number of concurrent handlers that can be executed.
+// if maxWorkers is less than or equal to 0, it will be set to 4 times the number of CPU cores.
 func WithMaxWorkers[T any](maxWorkers int) Option[T] {
 	return func(e *Event[T]) {
 		if maxWorkers <= 0 {
